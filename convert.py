@@ -17,10 +17,39 @@ CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'Google Calendar API Python Quickstart'
 
 
+def get_credentials():
+    """Gets valid user credentials from storage.
+
+    If nothing has been stored, or if the stored credentials are invalid,
+    the OAuth2 flow is completed to obtain the new credentials.
+
+    Returns:
+        Credentials, the obtained credential.
+    """
+    home_dir = os.path.expanduser('~')
+    credential_dir = os.path.join(home_dir, '.credentials')
+    if not os.path.exists(credential_dir):
+        os.makedirs(credential_dir)
+    credential_path = os.path.join(credential_dir, 'calendar-python-quickstart.json')
+
+    store = Storage(credential_path)
+    credentials = store.get()
+    if not credentials or credentials.invalid:
+        flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
+        flow.user_agent = APPLICATION_NAME
+        credentials = tools.run(flow, store)
+        print('Storing credentials to ' + credential_path)
+    return credentials
+
+
 def xls_to_list(xls_path):
     """
     Converts the xls file at the given path and writes out a csv file
-    :param xls_path the input xls file path
+
+    :param xls_path: the input xls file path
+    :return a list each containing a row from the xls sheet
+        date rows are formatted <year>-<month>-<day>
+        time rows are formatted <hour>:<minutes>
     """
     workbook = xlrd.open_workbook(xls_path)
     worksheet = workbook.sheet_by_index(1)
@@ -44,6 +73,12 @@ def xls_to_list(xls_path):
 
 
 def sheet_to_shifts(sheet):
+    """
+    Converts a list of rows from a schedule sheet to a list of shifts
+
+    :param sheet: a list of rows from the wylie wagg schedule sheet
+    :return: a list of shift tuples in the form (<year>, <start time>, <end time>)
+    """
     shifts = []
     dates = []
     for i, row in enumerate(sheet):
@@ -64,47 +99,20 @@ def sheet_to_shifts(sheet):
     return shifts
 
 
-def get_credentials():
-    """Gets valid user credentials from storage.
 
-    If nothing has been stored, or if the stored credentials are invalid,
-    the OAuth2 flow is completed to obtain the new credentials.
-
-    Returns:
-        Credentials, the obtained credential.
-    """
-    home_dir = os.path.expanduser('~')
-    credential_dir = os.path.join(home_dir, '.credentials')
-    if not os.path.exists(credential_dir):
-        os.makedirs(credential_dir)
-    credential_path = os.path.join(credential_dir,
-                                   'calendar-python-quickstart.json')
-
-    store = Storage(credential_path)
-    credentials = store.get()
-    if not credentials or credentials.invalid:
-        flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
-        flow.user_agent = APPLICATION_NAME
-        # if flags:
-        #     credentials = tools.run_flow(flow, store, flags)
-        # else: # Needed only for compatibility with Python 2.6
-        credentials = tools.run(flow, store)
-        print('Storing credentials to ' + credential_path)
-    return credentials
 
 
 def add_shifts_to_calendar(shifts):
-    # Refer to the Python quickstart on how to setup the environment:
-    # https://developers.google.com/google-apps/calendar/quickstart/python
-    # Change the scope to 'https://www.googleapis.com/auth/calendar' and delete any
-    # stored credentials.
+    """
+    Adds the shifts to the google calendar via the google calendar API
 
+    :param shifts: a list of shift tuples (year, start time, end time)
+    """
     credentials = get_credentials()
     http = credentials.authorize(httplib2.Http())
     service = discovery.build('calendar', 'v3', http=http)
 
     for shift in shifts:
-        print('shift\n{0}'.format(shift))
         start_hour = shift[1].split(':')[0]
         start_min = shift[1].split(':')[1]
         end_hour = shift[2].split(':')[0]
