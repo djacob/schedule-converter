@@ -29,22 +29,31 @@ def xls_to_list(xls_path):
 
     return sheet
 
-if __name__ == "__main__":
-    xls_path = sys.argv[1]
-    sheet = xls_to_list(xls_path=xls_path)
 
+def sheet_to_shifts(sheet):
+    shifts = []
     dates = []
     for i, row in enumerate(sheet):
         if row[3] == 'Sunday':
             dates = sheet[i + 1]
-            print('found dates {0}'.format(dates))
         if row[1] == 'Meg':
-            print('found meg')
             time_in = sheet[i]
             time_out = sheet[i + 1]
             prev_time = None
             for i, date in enumerate(dates):
                 shift = 'first' if date else ('second' if prev_time else None)
                 if time_in != '' and shift:
-                    print("working on {0} {1} from {2} to {3}".format(date, shift, time_in[i], time_out[i]))
+                    shifts.append((date if date != '' else dates[i - 1], time_in[i], time_out[i]))
                 prev_time = date if date != '' else None
+
+    return shifts
+
+
+if __name__ == "__main__":
+    xls_path = sys.argv[1]
+    sheet = xls_to_list(xls_path=xls_path)
+    shifts = sheet_to_shifts(sheet)
+
+    for shift in shifts:
+        if shift[1] != '' and shift[1] != '0:15':
+            print shift
