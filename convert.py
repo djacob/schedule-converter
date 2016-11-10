@@ -21,13 +21,14 @@ MEG_CALENDAR_ID = "sp2kd7vp3rnrst975s0j443kh4@group.calendar.google.com"
 class Shift:
     def __init__(self, date, start_time, end_time):
         self.date = date
-        (self.start_hour, self.start_minute) = start_time.split(":")
-        (self.end_hour, self.end_minute) = end_time.split(":")
 
-        self.start_minute = self.start_minute if self.start_minute != "0" else "00"
-        self.end_minute = self.end_minute if self.end_minute != "0" else "00"
+        self.start_hour = start_time["hour"]
+        self.start_minute = start_time["minute"] if start_time["minute"] else "00"
 
-        self.is_off = start_time == "0:15"
+        self.end_minute = end_time["minute"] if end_time["minute"] else "00"
+        self.end_hour = end_time["hour"]
+
+        self.is_off = self.start_hour == 0 and self.start_minute == 15
 
     def start_shift(self):
         return "{0.date}T{0.start_hour}:{0.start_minute}".format(self)
@@ -66,12 +67,13 @@ def get_credentials():
 
 def xls_to_list(xls_path):
     """
-    Converts the xls file at the given path and writes out a csv file
+    Converts the xls file at the given path to a list of rows
 
     :param xls_path: the input xls file path
-    :return a list each containing a row from the xls sheet
-        date rows are formatted <year>-<month>-<day>
-        time rows are formatted <hour>:<minutes>
+    :return a list each containing a row (list of cells) from the xls sheet
+        special cells are:
+            date rows formatted <year>-<month>-<day>
+            time rows formatted <hour>:<minutes>
     """
     workbook = xlrd.open_workbook(xls_path)
     worksheet = workbook.sheet_by_index(1)
@@ -84,8 +86,10 @@ def xls_to_list(xls_path):
             elif isinstance(cell, float) and cell > 0:
                 (year, month, day, hour, minute, second) = xlrd.xldate_as_tuple(cell, datemode=1)
                 if year == 0:
-                    row.append("{0}:{1}".format(hour, minute))
+                    # It's a time
+                    row.append({"hour": hour, "minute": minute})
                 else:
+                    # It's a date
                     row.append("{0}-{1}-{2}".format(datetime.today().year, month, day - 1))
             else:
                 row.append(cell)
@@ -95,10 +99,18 @@ def xls_to_list(xls_path):
 
 def sheet_to_shifts(sheet):
     """
-    Converts a list of rows from a schedule sheet to a list of shifts
+    Converts a list of rows from a schedule sheet to a list of Shift objects
+
+    Rows are formatted:
+      0  1   2     3       4     5     6       7     8  ...
+     [ ,    , , Sunday,         , ,  Monday,        , , ...]
+     [ ,    , ,   date,         , ,    date,        , , ...]
+      ...
+     [ , Meg, , shift 1, shift 2, , shift 1, shift 2, , ...] (start times)
+     [ ,    , , shift 1, shift 2, , shift 2, shift 2, , ...] (end times)
 
     :param sheet: a list of rows from the wylie wagg schedule sheet
-    :return: a list of shift tuples in the form (<year>, <start time>, <end time>)
+    :return: a list of Shift objects
     """
     shifts = []
     dates = []
@@ -113,9 +125,9 @@ def sheet_to_shifts(sheet):
             end_time = sheet[i + 1]
             prev_time = None
             for date_index, date in enumerate(dates):
-                empty_cell = not date and not prev_time
-                if start_time[date_index] != "" and not empty_cell:
-                    shift = Shift(date if date != "" else dates[date_index - 1],
+                shift_cell = date or prev_time
+                if start_time[date_index] and shift_cell:
+                    shift = Shift(date if date else dates[date_index - 1],
                                   start_time[date_index], end_time[date_index])
                     if not shift.is_off:
                         shifts.append(shift)
@@ -124,11 +136,12 @@ def sheet_to_shifts(sheet):
     return shifts
 
 
-def add_shifts_to_calendar(shifts):
+def add_shifts_to_calendar(shifts, dry_run=False):
     """
     Adds the shifts to the google calendar via the google calendar API
 
     :param shifts: a list of shift tuples (year, start time, end time)
+    :param dry_run: False if events should be added using the google calendar API, True if a dry run with just prints
     """
     credentials = get_credentials()
     http = credentials.authorize(httplib2.Http())
@@ -137,20 +150,22 @@ def add_shifts_to_calendar(shifts):
     for shift in shifts:
         event = {
             "summary": "Meg Working",
-            "start": {
-                "dateTime": "{}-05:00".format(shift.start_shift())
-            },
-            "end": {
-                "dateTime": "{}-05:00".format(shift.end_shift())
-            }
+            "start": {"dateTime": "{}-05:00".format(shift.start_shift())},
+            "end": {"dateTime": "{}-05:00".format(shift.end_shift())}
         }
 
-        created_event = service.events().insert(calendarId=MEG_CALENDAR_ID, body=event).execute()
-        print("Event created: {} {}".format(event, created_event.get("htmlLink")))
+        if not dry_run:
+            created_event = service.events().insert(calendarId=MEG_CALENDAR_ID, body=event).execute()
+            print("Event created: {} {}".format(event, created_event.get("htmlLink")))
+        else:
+            print("Dry Run Event: {}".format(event))
 
 
 if __name__ == "__main__":
+    # TODO: Use argparse or some shit
     xls_path = sys.argv[1]
-    sheet = xls_to_list(xls_path=xls_path)
-    shifts = sheet_to_shifts(sheet=sheet)
-    add_shifts_to_calendar(shifts)
+    dry_run = len(sys.argv) < 3 or not sys.argv[2] == '--create'
+
+    sheet = xls_to_list(xls_path)
+    shifts = sheet_to_shifts(sheet)
+    add_shifts_to_calendar(shifts, dry_run)
