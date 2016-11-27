@@ -150,8 +150,8 @@ def add_shifts_to_calendar(shifts, dry_run=False):
     for shift in shifts:
         event = {
             "summary": "Meg Working",
-            "start": {"dateTime": "{}-05:00".format(shift.start_shift())},
-            "end": {"dateTime": "{}-05:00".format(shift.end_shift())}
+            "start": {"dateTime": "{}:00-05".format(shift.start_shift())},
+            "end": {"dateTime": "{}:00-05".format(shift.end_shift())}
         }
 
         if not dry_run:
