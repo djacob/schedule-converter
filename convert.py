@@ -3,6 +3,7 @@
 import sys
 import xlrd
 from datetime import date as datetime
+import datetime as dt
 import httplib2
 import os
 from oauth2client import client
@@ -90,7 +91,9 @@ def xls_to_list(xls_path):
                     row.append({"hour": hour, "minute": minute})
                 else:
                     # It's a date
-                    row.append("{0}-{1}-{2}".format(datetime.today().year, month, day - 1))
+                    shift_date = datetime(datetime.today().year, month, day)
+                    shift_date = shift_date - dt.timedelta(days=1)
+                    row.append(shift_date.strftime("%Y-%m-%d"))
             else:
                 row.append(cell)
         sheet.append(row)
